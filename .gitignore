@@ -1,4 +1,6 @@
 node_modules
-package-lock.json
+test_root
+.log
 
+package-lock.json
 .projectile
