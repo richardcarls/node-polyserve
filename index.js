@@ -1,31 +1,30 @@
 const path = require('path');
 
+const VERSION = require('./package.json').version;
 const logger = require('./logger.js');
 
 const DEFAULT_OPTIONS = {
   root: '.',
 };
 
-class PolyServe {
-  get root() {
-    return this._root;
-  }
-  
-  constructor(options) {
-    options = Object.assign({}, DEFAULT_OPTIONS, options);
+module.exports = polyserve;
 
-    this._root = path.normalize(path.resolve(options.root));
-  }
+polyserve.version = VERSION;
 
-  getRequestHandler() {
-    return (request, response) => {
-      logger.http(`HTTP ${request.method} ${request.url}`);
-      
-      response.statusCode = 418;
-      response.statusMessage = 'I\'m a teapot';
-      response.end();
-    };
+function polyserve(options) {
+  options = Object.assign({}, DEFAULT_OPTIONS, options);
+
+  const root = path.normalize(path.resolve(options.root));
+
+  return requestHandler;
+
+  // ---
+
+  function requestHandler(request, response) {
+    logger.http(`HTTP ${request.method} ${request.url}`);
+    
+    response.statusCode = 418;
+    response.statusMessage = 'I\'m a teapot';
+    response.end();
   }
 }
-
-module.exports = exports = PolyServe;

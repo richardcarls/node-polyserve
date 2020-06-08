@@ -3,13 +3,13 @@ const http = require('http');
 const { Command } = require('commander');
 
 const VERSION = require('./package.json').version;
-const PolyServe = require('.');
+const polyserve = require('.');
 const logger = require('./logger.js');
 
 const program = new Command();
 
 program
-  .version(VERSION)
+  .version(polyserve.version)
   .option('-p, --port <number>', 'set server listen port. default is 80')
   .arguments('[root]')
   .action((root, options) => {
@@ -21,11 +21,9 @@ program
       serverOpts.root = root;
     }
     
-    const server = new PolyServe(serverOpts);
-
-    http.createServer(server.getRequestHandler())
-      .listen(port, (e) => {
-        logger.info(`PolyServe serving "${server.root}", listening on port ${port}.`);
+    http.createServer(polyserve(serverOpts))
+      .listen(port, (event) => {
+        logger.info(`PolyServe listening on port ${port}.`);
       });
   });
 
