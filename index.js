@@ -4,37 +4,33 @@ const fs = require('fs');
 const VERSION = require('./package.json').version;
 const logger = require('./logger.js');
 
-const DEFAULT_OPTIONS = {
-  root: '.',
-};
+class PolyServe {
+  static get version() {
+    return VERSION;
+  }
+  
+  get root() {
+    return this._root;
+  }
+  
+  constructor(root) {
+    this._root = path.normalize(path.resolve(root || '.'));
+  }
 
-module.exports = polyserve;
-
-polyserve.version = VERSION;
-
-function polyserve(options) {
-  options = Object.assign({}, DEFAULT_OPTIONS, options);
-
-  const root = path.normalize(path.resolve(options.root));
-
-  return requestHandler;
-
-  // ---
-
-  function requestHandler(request, response) {
+  requestHandler = (request, response) => {
     logger.http(`HTTP ${request.method} ${request.url}`);
 
     // Resolve a file path from url and root
     let fsPath;
     try {
-      fsPath = path.normalize(path.join(root, request.url));
+      fsPath = path.normalize(path.join(this._root, request.url));
     } catch(ex) {
       response.statusCode = 404;
       return response.end();
     }
 
     // Make sure we stay in server root
-    if (!fsPath.startsWith(root)) {
+    if (!fsPath.startsWith(this._root)) {
       logger.warn('Request mapped to resource outside polyserve root', request);
       
       response.statusCode = 403;
@@ -75,3 +71,5 @@ function polyserve(options) {
     });
   }
 }
+
+module.exports = exports = PolyServe;
