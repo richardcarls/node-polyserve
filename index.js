@@ -1,10 +1,6 @@
 const path = require('path');
-const util = require('util');
-const fs = require('fs');
-const fsStat = util.promisify(fs.stat);
 
 const VERSION = require('./package.json').version;
-const logger = require('./logger.js');
 
 class PolyServe {
   static get version() {
@@ -14,152 +10,47 @@ class PolyServe {
   get root() {
     return this._root;
   }
+
+  get logger() {
+    return this._logger;
+  }
   
   constructor(root) {
     this._root = path.normalize(path.resolve(root || '.'));
 
     const fns = [
-      resolvePath,
-      router,
-      serveFile,
-      serveIndex,
+      require('./middleware/respond.js')(),
+      require('./middleware/serve-static.js')(),
     ];
 
     this._middleware = composeMiddleware(fns);
+    
+    this._logger = require('./logger.js');
   }
 
   requestHandler = (request, response) => {
+    const onMessageError = (err) => {
+      this.logger.error(err.stack);
+
+      response.statusCode = 500;
+      response.end();
+    };
+    
+    // Set stream error handlers
+    request.on('error', onMessageError);
+    response.on('error', onMessageError);
+
+    // Construct context object
     const ctx = {
       app: this,
       request,
       response,
     };
 
+    // Call middleware stack
     this._middleware(ctx)
-      .then(() => {
-        logger.debug('post-middleware');
-        logger.debug(`statusCode: ${response.statusCode}`);
-
-        if (response.statusCode !== 200) {
-          response.end();
-        }
-      })
-      .catch(err => {
-        logger.error(err);
-
-        response.statusCode = 500;
-        response.end();
-      });
+      .catch(onMessageError);
   }
-}
-
-async function resolvePath(ctx, next) {
-  const { root } = ctx.app;
-  const { request, response } = ctx;
-
-  logger.debug('1. resolvePath');
-  logger.http(`HTTP ${request.method} ${request.url}`);
-
-  let fsPath;
-  try {
-    fsPath = path.normalize(path.join(root, request.url));
-  } catch(err) {
-    logger.error('Unable to resolve path', request);
-    response.statusCode = 404;
-
-    throw err;
-  }
-
-  // Make sure we stay in server root
-  if (!fsPath.startsWith(root)) {
-    logger.warn('Request mapped to resource outside root', request);
-    
-    response.statusCode = 403;
-    throw new Error('Request mapped to resource outside root');
-  }
-
-  ctx.fsPath = fsPath;
-
-  return next();
-}
-
-async function router(ctx, next) {
-  const { root } = ctx.app;
-  const { request, response, fsPath } = ctx;
-
-  logger.debug('2. router');
-  
-  // See if the file/directory exists
-  return fsStat(fsPath)
-    .then(stat => {
-      logger.debug('successful stat');
-      
-      ctx.stat = stat;
-
-      return next();
-    })
-    .catch(err => {
-      if (err.code === 'ENOENT' || err.code === 'ENOTDIR') {
-        // TODO: try index
-        logger.debug('stat error, try index (unimplemented)');
-
-        response.statusCode = 404;
-        return next();
-      }
-
-      logger.error('Error getting fs stat.');
-      throw err;
-    });
-}
-
-async function serveFile(ctx, next) {
-  const { root } = ctx.app;
-  const { request, response, fsPath, stat } = ctx;
-
-  logger.debug('3. serveFile');
-
-  if (!stat || stat.isDirectory()) {
-    logger.debug('no stat or stat is directory');
-    
-    return next();
-  }
-
-  logger.debug('setting headers, 200 OK');
-  
-  response.setHeader('content-length', stat.size);
-  response.setHeader('content-type', 'text/html');
-  
-  response.statusCode = 200;
-
-  await next();
-
-  logger.debug('streaming file');
-
-  fs.createReadStream(fsPath)
-    .on('error', err => {
-      logger.error('Error streaming file.');
-      response.statusCode = 500;
-      
-      throw err;
-    })
-    .pipe(response);
-}
-
-async function serveIndex(ctx, next) {
-  const { root } = ctx.app;
-  const { request, response, fsPath, stat } = ctx;
-
-  logger.debug('4. serveIndex');
-
-  if (!stat || !stat.isDirectory()) {
-    logger.debug('no stat or stat not directory');
-    
-    return next();
-  }
-
-  logger.debug('serving index (unimplemented, 404).');
-  response.statusCode = 404;
-  return next();
 }
 
 function composeMiddleware(fns) {
