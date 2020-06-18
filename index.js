@@ -45,6 +45,7 @@ class PolyServe {
       app: this,
       request,
       response,
+      body: null,
     };
 
     // Call middleware stack
@@ -77,8 +78,8 @@ function composeMiddleware(fns) {
       
       try {
         return Promise.resolve(fn(ctx, dispatch.bind(null, i + 1)));
-      } catch (ex) {
-        return Promise.reject(ex);
+      } catch (err) {
+        return Promise.reject(err);
       }
     }
   };

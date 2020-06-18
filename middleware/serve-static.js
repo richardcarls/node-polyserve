@@ -1,13 +1,14 @@
 const path = require('path');
 const fs = require('fs');
-const util = require('util');
 
-const fsStat = util.promisify(fs.stat);
+const DEFAULT_OPTIONS = {
+  serveIndices: true,
+}
 
 module.exports = exports = createMiddleware;
 
 function createMiddleware(options) {
-  options = Object.assign({}, options, {});
+  options = Object.assign({}, DEFAULT_OPTIONS, options);
   
   return async function serveStatic(ctx, next) {
     const { logger, root } = ctx.app;
@@ -17,47 +18,54 @@ function createMiddleware(options) {
     try {
       fsPath = path.normalize(path.join(root, request.url));
     } catch(err) {
+      logger.error('Error converting URL to fs path.', request);
+      
       return next();
     }
 
     // Make sure we stay in server root
     if (!fsPath.startsWith(root)) {
-      logger.warn('Request mapped to filesystem resource outside root');
+      logger.error('Request mapped to filesystem resource outside root');
       
       response.statusCode = 403;
-      throw new Error('Request mapped to resource outside root');
+      
+      return next();
     }
 
-    await next();
-
-    // See if the file/directory exists
-    return fsStat(fsPath)
-      .then(stat => {
-        if (stat.isFile()) {
-          // Serve file
-          response.setHeader('content-length', stat.size);
-          response.setHeader('content-type', 'text/html');
+    let filePath = fsPath.slice(0);
+    return fs.promises.lstat(filePath)
+      .then(stats => {
+        if (stats.isDirectory()) {
+          logger.debug('Path resolves to directory, looking for index');
           
-          response.statusCode = 200;
-
-          return fs.createReadStream(fsPath)
-            .on('error', err => {
-              logger.error('Error streaming file.');
-              response.statusCode = 500;
-              
-              throw err;
-            })
-            .pipe(response);
-        } else {
-          // Serve index
-          logger.debug('serving index (unimplemented, 404).');
+          filePath = path.join(filePath, 'index.html');
+          
+          return fs.promises.lstat(filePath);
         }
+
+        logger.debug('Path resolves to file');
+        
+        return stats;
+      })
+      .then(stats => {
+        logger.debug(`Serving file ${filePath}`);
+        
+        response.statusCode = 200;
+
+        // TODO: Detect mime type
+        response.setHeader('Content-Length', stats.size);
+        response.setHeader('Content-Type', 'text/html');
+        
+        ctx.body = fs.createReadStream(filePath);
+
+        return next();
       })
       .catch(err => {
-        if (err.code === 'ENOENT' || err.code === 'ENOTDIR') {
-          // TODO: try index
-          logger.debug('stat error, try index (unimplemented)');
+        if (err.code !== 'ENOENT') {
+          throw err;
         }
+        
+        return next();
       });
   };
 }
