@@ -20,7 +20,14 @@ class PolyServe {
 
     const fns = [
       require('./middleware/respond.js')(),
-      require('./middleware/serve-static.js')(),
+      // TODO: "match-routes.js" support for config or per-directory route handlers?
+      require('./middleware/resolve.js')(), // "resolve-resources.js"
+      
+      // *** "Serve" middleware act on ctx.resources array
+      require('./middleware/serve-html.js')(),
+      require('./middleware/serve-index.js')(),
+      require('./middleware/serve-file.js')(),
+      // TODO: "serve-multiple.js" for multiple file matches. serve small list of matched file links.
     ];
 
     this._middleware = composeMiddleware(fns);
@@ -40,11 +47,16 @@ class PolyServe {
     request.on('error', onMessageError);
     response.on('error', onMessageError);
 
+    const proto = request.socket.encrypted ? 'https' : 'http';
+    const url = new URL(request.url, `${proto}://${request.headers.host}`);
+    
     // Construct context object
     const ctx = {
       app: this,
       request,
       response,
+      url,
+      resources: [],
       body: null,
     };
 

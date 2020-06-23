@@ -17,10 +17,12 @@ function createMiddleware(options) {
 
     // Default status code
     response.statusCode = 404;
-
+    
     await next();
-
+    
     if (response.writeableFinished) {
+      logger.warn('response was sent early');
+      
       return;
     }
     
